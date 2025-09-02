@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Video Database Dashboard</title>
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
@@ -14,7 +14,7 @@
     
     <script type="text/babel">
         {% raw %}
-        const { useState, useEffect } = React;
+        const { useState, useEffect, useRef } = React;
 
         const Sidebar = ({ isCollapsed, activeItem, setActiveItem }) => {
             const menuItems = [
@@ -340,31 +340,420 @@
             );
         };
 
-        const VideoDatabase = () => {
-            const [videos, setVideos] = useState([
-                { 
-                    id: 1, 
-                    title: 'Video 1', 
-                    ctrFile: 'ctr_data_1.csv', 
-                    impressionFile: 'impression_data_1.csv',
-                    performanceData: [
-                        { date: '2024-01-01', day: 1, dailyCTR: 6.0, dailyImpressions: 10000, totalCTR: 6.0, totalImpressions: 10000 },
-                        { date: '2024-01-02', day: 2, dailyCTR: 7.0, dailyImpressions: 20000, totalCTR: 6.7, totalImpressions: 30000 },
-                        { date: '2024-01-03', day: 3, dailyCTR: 6.0, dailyImpressions: 15000, totalCTR: 6.4, totalImpressions: 45000 }
-                    ]
-                },
-                { 
-                    id: 2, 
-                    title: 'Video 2', 
-                    ctrFile: 'ctr_data_2.csv', 
-                    impressionFile: 'impression_data_2.csv',
-                    performanceData: [
-                        { date: '2024-01-01', day: 1, dailyCTR: 5.5, dailyImpressions: 12000, totalCTR: 5.5, totalImpressions: 12000 },
-                        { date: '2024-01-02', day: 2, dailyCTR: 6.2, dailyImpressions: 18000, totalCTR: 5.9, totalImpressions: 30000 },
-                        { date: '2024-01-03', day: 3, dailyCTR: 5.8, dailyImpressions: 14000, totalCTR: 5.8, totalImpressions: 44000 }
-                    ]
+        // ---------- Updated BaselineTracker component starts here ----------
+        const BaselineTracker = ({ videos }) => {
+            const [impressionValue, setImpressionValue] = useState('');
+            const [predictedCTR, setPredictedCTR] = useState(null);
+            const [zoom, setZoom] = useState(1); // 1 = full-range view, >1 zoomed in
+            const [dataPan, setDataPan] = useState({ x: 0, y: 0 }); // pan in data units (impressions, ctr)
+            const [isDragging, setIsDragging] = useState(false);
+            const dragRef = useRef({ startMouse: null, startPan: null });
+            const svgRef = useRef(null);
+
+            // Chart layout constants (pixel-space)
+            const margin = { left: 80, right: 30, top: 40, bottom: 60 };
+            const chartW = 370; // width in px for plotting area (kept to match original layout)
+            const chartH = 320;
+            const svgWidth = margin.left + chartW + margin.right;
+            const svgHeight = margin.top + chartH + margin.bottom;
+
+            // Aggregate all data points from all videos using cumulative values
+            const getAllDataPoints = () => {
+                const allPoints = [];
+                videos.forEach(video => {
+                    if (video.performanceData) {
+                        video.performanceData.forEach(dataPoint => {
+                            // Use the total (cumulative) values from each row
+                            allPoints.push({
+                                impressions: dataPoint.totalImpressions,
+                                ctr: dataPoint.totalCTR,
+                                videoTitle: video.title,
+                                date: dataPoint.date,
+                                day: dataPoint.day
+                            });
+                        });
+                    }
+                });
+                // sort by impressions ascending for trend calculation
+                allPoints.sort((a,b) => a.impressions - b.impressions);
+                return allPoints;
+            };
+
+            const dataPoints = getAllDataPoints();
+
+            // Base data domain (before zoom/pan)
+            const dataXMax = dataPoints.length > 0 ? Math.max(...dataPoints.map(p => p.impressions)) : 20000;
+            const dataYMax = dataPoints.length > 0 ? Math.max(...dataPoints.map(p => p.ctr)) : 8;
+            const dataXMin = 0;
+            const dataYMin = 0;
+
+            // Visible data range based on zoom and pan
+            const getVisibleRange = () => {
+                // visible span in data units shrinks as zoom increases
+                const fullXSpan = Math.max(1, dataXMax - dataXMin);
+                const fullYSpan = Math.max(0.1, dataYMax - dataYMin);
+
+                const visibleXSpan = fullXSpan / zoom;
+                const visibleYSpan = fullYSpan / zoom;
+
+                // center base: middle of the data domain
+                const centerX = dataXMin + fullXSpan / 2 - dataPan.x;
+                const centerY = dataYMin + fullYSpan / 2 - dataPan.y;
+
+                let startX = centerX - visibleXSpan / 2;
+                let endX = centerX + visibleXSpan / 2;
+                let startY = centerY - visibleYSpan / 2;
+                let endY = centerY + visibleYSpan / 2;
+
+                // clamp to domain
+                if (startX < dataXMin) {
+                    startX = dataXMin;
+                    endX = Math.min(dataXMin + visibleXSpan, dataXMin + fullXSpan);
                 }
-            ]);
+                if (endX > dataXMin + fullXSpan) {
+                    endX = dataXMin + fullXSpan;
+                    startX = Math.max(dataXMin, endX - visibleXSpan);
+                }
+
+                if (startY < dataYMin) {
+                    startY = dataYMin;
+                    endY = Math.min(dataYMin + visibleYSpan, dataYMin + fullYSpan);
+                }
+                if (endY > dataYMin + fullYSpan) {
+                    endY = dataYMin + fullYSpan;
+                    startY = Math.max(dataYMin, endY - visibleYSpan);
+                }
+
+                return { startX, endX, startY, endY };
+            };
+
+            const visibleRange = getVisibleRange();
+
+            // helpers: map data -> screen
+            const xToScreen = (x) => {
+                const t = (x - visibleRange.startX) / (visibleRange.endX - visibleRange.startX || 1);
+                return margin.left + t * chartW;
+            };
+            const yToScreen = (y) => {
+                const t = (y - visibleRange.startY) / (visibleRange.endY - visibleRange.startY || 1);
+                // invert y for screen coords (0 at top)
+                return margin.top + (1 - t) * chartH;
+            };
+
+            // Tick generation: more ticks when zoomed in
+            const generateTickLabels = () => {
+                const zoomFactor = Math.max(1, zoom);
+                const maxTicks = 8;
+                const minTicks = 3;
+                const numTicks = Math.max(minTicks, Math.min(maxTicks, Math.round(3 + zoomFactor * 2)));
+
+                // X ticks (impressions)
+                const xTicks = [];
+                const spanX = visibleRange.endX - visibleRange.startX;
+                const niceStepX = niceNumber(spanX / (numTicks - 1));
+                const firstTickX = Math.ceil(visibleRange.startX / niceStepX) * niceStepX;
+                for (let val = firstTickX; val <= visibleRange.endX + 1e-6; val += niceStepX) {
+                    xTicks.push({ value: val, x: xToScreen(val) });
+                }
+
+                // Y ticks (CTR)
+                const yTicks = [];
+                const spanY = visibleRange.endY - visibleRange.startY;
+                const niceStepY = niceNumber(spanY / (numTicks - 1));
+                const firstTickY = Math.ceil(visibleRange.startY / niceStepY) * niceStepY;
+                for (let val = firstTickY; val <= visibleRange.endY + 1e-6; val += niceStepY) {
+                    yTicks.push({ value: val, y: yToScreen(val) });
+                }
+
+                return { xTicks, yTicks };
+            };
+
+            // nice step helper (rounds to human-friendly increments)
+            const niceNumber = (raw) => {
+                if (!isFinite(raw) || raw <= 0) return 1;
+                const exponent = Math.floor(Math.log10(raw));
+                const fraction = raw / Math.pow(10, exponent);
+                let niceFraction;
+                if (fraction <= 1) niceFraction = 1;
+                else if (fraction <= 2) niceFraction = 2;
+                else if (fraction <= 5) niceFraction = 5;
+                else niceFraction = 10;
+                return niceFraction * Math.pow(10, exponent);
+            };
+
+            const tickLabels = generateTickLabels();
+
+            // Drag handlers (pan in data units)
+            const handleMouseDown = (e) => {
+                if (!svgRef.current) return;
+                setIsDragging(true);
+                dragRef.current.startMouse = { x: e.clientX, y: e.clientY };
+                dragRef.current.startPan = { ...dataPan };
+            };
+
+            const handleMouseMove = (e) => {
+                if (!isDragging || !svgRef.current) return;
+                const dx = e.clientX - dragRef.current.startMouse.x; // px
+                const dy = e.clientY - dragRef.current.startMouse.y; // px
+
+                // convert pixel delta to data delta using current visible spans
+                const visibleXSpan = visibleRange.endX - visibleRange.startX;
+                const visibleYSpan = visibleRange.endY - visibleRange.startY;
+
+                const deltaDataX = (dx / chartW) * visibleXSpan;
+                const deltaDataY = ( -dy / chartH) * visibleYSpan; // note sign: dragging down should decrease Y data center
+
+                setDataPan({
+                    x: dragRef.current.startPan.x - deltaDataX,
+                    y: dragRef.current.startPan.y - deltaDataY
+                });
+            };
+
+            const handleMouseUp = () => {
+                setIsDragging(false);
+            };
+
+            // Wheel zoom centered on mouse
+            const handleWheel = (e) => {
+                e.preventDefault();
+                const svg = svgRef.current;
+                if (!svg) return;
+
+                const rect = svg.getBoundingClientRect();
+                const mouseX = e.clientX - rect.left;
+                const mouseY = e.clientY - rect.top;
+
+                // convert mouse pixel to data coordinate
+                const mouseDataX = visibleRange.startX + ((mouseX - margin.left) / chartW) * (visibleRange.endX - visibleRange.startX);
+                const mouseDataY = visibleRange.startY + (1 - (mouseY - margin.top) / chartH) * (visibleRange.endY - visibleRange.startY);
+
+                const deltaZoom = e.deltaY > 0 ? 0.9 : 1.1;
+                const newZoom = Math.max(1, Math.min(30, zoom * deltaZoom)); // limit zoom between 1 and 30
+                // compute new pan so mouseData stays at same screen position
+                const fullXSpan = Math.max(1, dataXMax - dataXMin);
+                const fullYSpan = Math.max(0.1, dataYMax - dataYMin);
+                const newVisibleX = fullXSpan / newZoom;
+                const newVisibleY = fullYSpan / newZoom;
+
+                // new center should be such that mouseData is at same relative position
+                const relX = (mouseDataX - visibleRange.startX) / (visibleRange.endX - visibleRange.startX || 1);
+                const relY = (mouseDataY - visibleRange.startY) / (visibleRange.endY - visibleRange.startY || 1);
+
+                const newStartX = mouseDataX - relX * newVisibleX;
+                const newStartY = mouseDataY - relY * newVisibleY;
+                const centerX = newStartX + newVisibleX / 2;
+                const centerY = newStartY + newVisibleY / 2;
+
+                // dataPan was used such that center = mid - pan, so: pan = mid - center
+                const panX = (dataXMin + fullXSpan/2) - centerX;
+                const panY = (dataYMin + fullYSpan/2) - centerY;
+
+                setZoom(newZoom);
+                setDataPan({ x: panX, y: panY });
+            };
+
+            const resetView = () => {
+                setZoom(1);
+                setDataPan({ x: 0, y: 0 });
+            };
+
+            // Trend line (linear regression) computed from data points
+            const calculateTrendLine = () => {
+                if (dataPoints.length < 2) return [];
+                const n = dataPoints.length;
+                const xs = dataPoints.map(p => p.impressions);
+                const ys = dataPoints.map(p => p.ctr);
+                const sumX = xs.reduce((a,b)=>a+b,0);
+                const sumY = ys.reduce((a,b)=>a+b,0);
+                const sumXY = xs.reduce((a,b,i)=>a + b * ys[i], 0);
+                const sumXX = xs.reduce((a,b)=>a + b*b, 0);
+                const denom = n * sumXX - sumX * sumX;
+                const slope = denom === 0 ? 0 : (n * sumXY - sumX * sumY) / denom;
+                const intercept = (sumY - slope * sumX) / n;
+
+                const minX = Math.min(...xs);
+                const maxX = Math.max(...xs);
+                const points = [];
+                const segments = 60;
+                for (let i = 0; i <= segments; i++) {
+                    const x = minX + (i / segments) * (maxX - minX);
+                    const y = intercept + slope * x;
+                    points.push({ x, y });
+                }
+                return points;
+            };
+
+            const trendLine = calculateTrendLine();
+
+            const handlePredictCTR = () => {
+                if (!impressionValue || trendLine.length < 2) return;
+                
+                const impressions = parseInt(impressionValue);
+                if (isNaN(impressions)) return;
+
+                // simple interpolation using trend line endpoints
+                const first = trendLine[0];
+                const last = trendLine[trendLine.length - 1];
+                const slope = (last.y - first.y) / (last.x - first.x || 1);
+                const intercept = first.y - slope * first.x;
+                const predicted = slope * impressions + intercept;
+                
+                setPredictedCTR(Math.max(0, predicted).toFixed(2));
+            };
+
+            // dynamic tick visuals (font size & tick length scale with zoom)
+            const tickFontSize = Math.min(14, 10 + Math.log10(zoom + 1) * 4);
+            const tickLength = Math.min(14, 6 + Math.log10(zoom + 1) * 6);
+
+            return (
+                <div className="baseline-tracker-page">
+                    <h1>Baseline Tracker</h1>
+                    
+                    {/* Chart Container */}
+                    <div className="chart-container">
+                        <div className="chart-header">
+                            <h3>Cumulative CTR vs Total Impressions Trend</h3>
+                            <div className="chart-controls">
+                                <button onClick={resetView} className="reset-btn">Reset View</button>
+                                <span className="zoom-info">Zoom: {Math.round(zoom * 100)}%</span>
+                            </div>
+                        </div>
+                        <div 
+                            className="chart-wrapper"
+                            onWheel={handleWheel}
+                        >
+                            <svg 
+                                ref={svgRef}
+                                className="chart" 
+                                viewBox={`0 0 ${svgWidth} ${svgHeight}`}
+                                width={svgWidth}
+                                height={svgHeight}
+                                onMouseDown={handleMouseDown}
+                                onMouseMove={handleMouseMove}
+                                onMouseUp={handleMouseUp}
+                                onMouseLeave={handleMouseUp}
+                            >
+                                {/* Y-axis */}
+                                <line x1={margin.left} y1={margin.top} x2={margin.left} y2={margin.top + chartH} stroke="#3f3f3f" strokeWidth="2"/>
+                                <text x={margin.left - 50} y={margin.top + 10} className="axis-label">CTR</text>
+                                <text x={margin.left - 55} y={margin.top + 18} className="axis-arrow">↑</text>
+                                
+                                {/* Y-axis ticks and labels - dynamic based on visible range */}
+                                {tickLabels.yTicks.map((tick, index) => (
+                                    <g key={index} >
+                                        <text x={margin.left - 30} y={tick.y + 4} className="tick-label" style={{ fontSize: `${tickFontSize}px` }}>{tick.value.toFixed(1)}%</text>
+                                        <line x1={margin.left - tickLength} y1={tick.y} x2={margin.left + 4} y2={tick.y} stroke="#3f3f3f"/>
+                                    </g>
+                                ))}
+                                
+                                {/* X-axis */}
+                                <line x1={margin.left} y1={margin.top + chartH} x2={margin.left + chartW} y2={margin.top + chartH} stroke="#3f3f3f" strokeWidth="2"/>
+                                <text x={margin.left + chartW/2} y={margin.top + chartH + 50} className="axis-label">Total Impressions</text>
+                                <text x={margin.left + chartW - 10} y={margin.top + chartH + 25} className="axis-arrow">→</text>
+                                
+                                {/* X-axis ticks and labels - dynamic based on visible range */}
+                                {tickLabels.xTicks.map((tick, index) => (
+                                    <g key={index}>
+                                        <text x={tick.x} y={margin.top + chartH + 22} className="tick-label" style={{ fontSize: `${tickFontSize}px` }}>{Math.round(tick.value).toLocaleString()}</text>
+                                        <line x1={tick.x} y1={margin.top + chartH - tickLength/2} x2={tick.x} y2={margin.top + chartH + tickLength/2} stroke="#3f3f3f"/>
+                                    </g>
+                                ))}
+
+                                {/* Transparent rect to capture drag/wheel events inside plotting area */}
+                                <rect
+                                    x={margin.left}
+                                    y={margin.top}
+                                    width={chartW}
+                                    height={chartH}
+                                    fill="transparent"
+                                />
+
+                                {/* Data points */}
+                                <g className="data-layer">
+                                    {dataPoints.map((point, index) => {
+                                        // only draw points that fall within visible range (small performance optimization)
+                                        if (point.impressions < visibleRange.startX - 1 || point.impressions > visibleRange.endX + 1) return null;
+                                        if (point.ctr < visibleRange.startY - 1 || point.ctr > visibleRange.endY + 1) return null;
+                                        const cx = xToScreen(point.impressions);
+                                        const cy = yToScreen(point.ctr);
+                                        const r = Math.max(2.5, Math.min(6, 3 * Math.log10(zoom + 1)));
+                                        return (
+                                            <circle
+                                                key={index}
+                                                cx={cx}
+                                                cy={cy}
+                                                r={r}
+                                                fill="#1c62b9"
+                                                opacity="0.9"
+                                            />
+                                        );
+                                    })}
+
+                                    {/* Trend line (smooth curve) */}
+                                    {trendLine.length > 2 && (
+                                        <path
+                                            d={trendLine.map((pt, i) => {
+                                                const sx = xToScreen(pt.x);
+                                                const sy = yToScreen(pt.y);
+                                                return `${i === 0 ? 'M' : 'L'} ${sx} ${sy}`;
+                                            }).join(' ')}
+                                            stroke="#ff6b6b"
+                                            strokeWidth="2"
+                                            fill="none"
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                        />
+                                    )}
+
+                                    {/* Prediction point */}
+                                    {predictedCTR && impressionValue && (
+                                        <circle
+                                            cx={xToScreen(parseInt(impressionValue))}
+                                            cy={yToScreen(parseFloat(predictedCTR))}
+                                            r="6"
+                                            fill="#ff6b6b"
+                                            stroke="#ffffff"
+                                            strokeWidth="2"
+                                        />
+                                    )}
+                                </g>
+                            </svg>
+                        </div>
+                    </div>
+                    
+                    {/* Controls */}
+                    <div className="controls-section">
+                        <div className="compare-section">
+                            <span className="compare-label">Compare</span>
+                            <div className="input-group">
+                                <input
+                                    type="number"
+                                    placeholder="Imp. Value"
+                                    value={impressionValue}
+                                    onChange={(e) => setImpressionValue(e.target.value)}
+                                    className="impression-input"
+                                />
+                                <button 
+                                    className="go-button"
+                                    onClick={handlePredictCTR}
+                                >
+                                    GO
+                                </button>
+                            </div>
+                        </div>
+                        
+                        {predictedCTR && (
+                            <div className="prediction-result">
+                                <p>Predicted CTR: <strong>{predictedCTR}%</strong></p>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+        // ---------- Updated BaselineTracker component ends here ----------
+
+        const VideoDatabase = ({ videos, setVideos }) => {
             const [isModalOpen, setIsModalOpen] = useState(false);
             const [isEditModalOpen, setIsEditModalOpen] = useState(false);
             const [isViewModalOpen, setIsViewModalOpen] = useState(false);
@@ -619,12 +1008,12 @@
             );
         };
 
-        const MainContent = ({ activeView }) => {
+        const MainContent = ({ activeView, videos, setVideos }) => {
             return (
                 <main className="main-content">
                     {activeView === 'dashboard' && <Dashboard />}
-                    {activeView === 'baseline-tracker' && <div className="baseline-tracker-page">Baseline Tracker content coming soon...</div>}
-                    {activeView === 'video-database' && <VideoDatabase />}
+                    {activeView === 'baseline-tracker' && <BaselineTracker videos={videos} />}
+                    {activeView === 'video-database' && <VideoDatabase videos={videos} setVideos={setVideos} />}
                 </main>
             );
         };
@@ -632,6 +1021,49 @@
         const App = () => {
             const [activeView, setActiveView] = useState('dashboard');
             const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+            
+            // Load videos from localStorage on component mount
+            const [videos, setVideos] = useState(() => {
+                const savedVideos = localStorage.getItem('yt-videos');
+                if (savedVideos) {
+                    try {
+                        return JSON.parse(savedVideos);
+                    } catch (error) {
+                        console.error('Error parsing saved videos:', error);
+                        return [];
+                    }
+                }
+                // Default sample data if no saved data
+                return [
+                    { 
+                        id: 1, 
+                        title: 'Video 1', 
+                        ctrFile: 'ctr_data_1.csv', 
+                        impressionFile: 'impression_data_1.csv',
+                        performanceData: [
+                            { date: '2024-01-01', day: 1, dailyCTR: 6.0, dailyImpressions: 10000, totalCTR: 6.0, totalImpressions: 10000 },
+                            { date: '2024-01-02', day: 2, dailyCTR: 7.0, dailyImpressions: 20000, totalCTR: 6.7, totalImpressions: 30000 },
+                            { date: '2024-01-03', day: 3, dailyCTR: 6.0, dailyImpressions: 15000, totalCTR: 6.4, totalImpressions: 45000 }
+                        ]
+                    },
+                    { 
+                        id: 2, 
+                        title: 'Video 2', 
+                        ctrFile: 'ctr_data_2.csv', 
+                        impressionFile: 'impression_data_2.csv',
+                        performanceData: [
+                            { date: '2024-01-01', day: 1, dailyCTR: 5.5, dailyImpressions: 12000, totalCTR: 5.5, totalImpressions: 12000 },
+                            { date: '2024-01-02', day: 2, dailyCTR: 6.2, dailyImpressions: 18000, totalCTR: 5.9, totalImpressions: 30000 },
+                            { date: '2024-01-03', day: 3, dailyCTR: 5.8, dailyImpressions: 14000, totalCTR: 5.8, totalImpressions: 44000 }
+                        ]
+                    }
+                ];
+            });
+
+            // Save videos to localStorage whenever videos state changes
+            useEffect(() => {
+                localStorage.setItem('yt-videos', JSON.stringify(videos));
+            }, [videos]);
 
             const toggleSidebar = () => {
                 setSidebarCollapsed(!sidebarCollapsed);
@@ -646,7 +1078,7 @@
                             activeItem={activeView}
                             setActiveItem={setActiveView}
                         />
-                        <MainContent activeView={activeView} />
+                        <MainContent activeView={activeView} videos={videos} setVideos={setVideos} />
                     </div>
                 </div>
             );

@@ -5,11 +5,16 @@
     box-sizing: border-box;
 }
 
+html {
+    touch-action: pan-x pan-y; /* Prevent page zoom on touch devices */
+}
+
 body {
     font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     background-color: #0f0f0f;
     color: #ffffff;
     overflow-x: hidden;
+    overflow-y: auto; /* Allow vertical scroll but prevent horizontal */
 }
 
 .app {
@@ -754,6 +759,195 @@ body {
     border-bottom: none;
 }
 
+/* Baseline Tracker Styles */
+.baseline-tracker-page {
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 40px 20px;
+}
+
+.baseline-tracker-page h1 {
+    font-size: 28px;
+    font-weight: 400;
+    margin-bottom: 32px;
+    color: #ffffff;
+    text-align: center;
+}
+
+.chart-container {
+    background-color: #1f1f1f;
+    border: 2px solid #3f3f3f;
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 32px;
+}
+
+.chart-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.chart-header h3 {
+    font-size: 18px;
+    font-weight: 500;
+    color: #ffffff;
+    margin: 0;
+}
+
+.chart-controls {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.reset-btn {
+    background: #3f3f3f;
+    color: #fff;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: background 0.2s;
+}
+
+.reset-btn:hover {
+    background: #4f4f4f;
+}
+
+.zoom-info {
+    color: #ccc;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+.chart-wrapper {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 420px;
+    position: relative;
+    overflow: hidden;
+    cursor: grab;
+}
+
+.chart-wrapper:active {
+    cursor: grabbing;
+}
+
+.chart {
+    width: 100%;
+    max-width: 600px;
+    height: 420px;
+}
+
+.data-layer {
+    cursor: grab;
+    transition: transform 0.1s ease-out;
+}
+
+.data-layer:active {
+    cursor: grabbing;
+}
+
+.axis-label {
+    fill: #ffffff;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.axis-arrow {
+    fill: #ffffff;
+    font-size: 12px;
+}
+
+.tick-label {
+    fill: #aaaaaa;
+    font-size: 12px;
+}
+
+.controls-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+}
+
+.compare-section {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.compare-label {
+    font-size: 18px;
+    font-weight: 500;
+    color: #ffffff;
+}
+
+.input-group {
+    display: flex;
+    gap: 12px;
+}
+
+.impression-input {
+    background-color: #2a2a2a;
+    border: 2px solid #3f3f3f;
+    border-radius: 8px;
+    padding: 12px 16px;
+    color: #ffffff;
+    font-size: 16px;
+    width: 150px;
+    transition: border-color 0.2s ease;
+}
+
+.impression-input:focus {
+    outline: none;
+    border-color: #1c62b9;
+}
+
+.impression-input::placeholder {
+    color: #aaaaaa;
+}
+
+.go-button {
+    background-color: #1c62b9;
+    color: #ffffff;
+    border: none;
+    border-radius: 8px;
+    padding: 12px 24px;
+    font-size: 16px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.go-button:hover {
+    background-color: #1a5aa8;
+}
+
+.prediction-result {
+    background-color: #2a2a2a;
+    border: 2px solid #1c62b9;
+    border-radius: 8px;
+    padding: 16px 24px;
+    text-align: center;
+}
+
+.prediction-result p {
+    margin: 0;
+    font-size: 16px;
+    color: #ffffff;
+}
+
+.prediction-result strong {
+    color: #1c62b9;
+    font-size: 18px;
+}
+
 .loading {
     text-align: center;
     padding: 40px;
@@ -956,5 +1150,44 @@ body {
     
     .performance-table th {
         padding: 10px 6px;
+    }
+    
+    .baseline-tracker-page {
+        padding: 20px 16px;
+    }
+    
+    .baseline-tracker-page h1 {
+        font-size: 24px;
+    }
+    
+    .chart-container {
+        padding: 16px;
+    }
+    
+    .chart-header h3 {
+        font-size: 16px;
+    }
+    
+    .compare-section {
+        flex-direction: column;
+        gap: 12px;
+        text-align: center;
+    }
+    
+    .compare-label {
+        font-size: 16px;
+    }
+    
+    .input-group {
+        flex-direction: column;
+        gap: 8px;
+    }
+    
+    .impression-input {
+        width: 200px;
+    }
+    
+    .go-button {
+        width: 200px;
     }
 }
