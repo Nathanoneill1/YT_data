@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Database Dashboard</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <div id="root"></div>
+    
+    <script type="text/babel">
+        {% raw %}
+        const { useState, useEffect } = React;
+
+        const Sidebar = ({ isCollapsed, activeItem, setActiveItem }) => {
+            const menuItems = [
+                { id: 'dashboard', label: 'Dashboard', icon: null },
+                { id: 'baseline-tracker', label: 'Baseline Tracker', icon: null },
+                { id: 'video-database', label: 'Video Database', icon: null }
+            ];
+
+            return (
+                <div className={`sidebar ${isCollapsed ? 'collapsed' : ''}`}>
+                    <div className="channel-info">
+                        <div className="profile-picture">N</div>
+                        <div className="channel-name">Nate O'Neill</div>
+                        <div className="edit-icon">⚙️</div>
+                    </div>
+                    <nav className="nav-menu">
+                        {menuItems.map(item => (
+                            <div 
+                                key={item.id}
+                                className={`nav-item ${activeItem === item.id ? 'active' : ''}`}
+                                onClick={() => setActiveItem(item.id)}
+                            >
+                                <span className="nav-label">{item.label}</span>
+                            </div>
+                        ))}
+                    </nav>
+                </div>
+            );
+        };
+
+        const Header = ({ onToggleSidebar }) => {
+            return (
+                <header className="header">
+                    <div className="header-left">
+                        <div className="menu-icon" onClick={onToggleSidebar}>☰</div>
+                        <div className="logo">
+                            <span className="logo-icon">▶</span>
+                            <span className="logo-text">Baseline Tracker</span>
+                        </div>
+                    </div>
+                    <div className="search-bar">
+                        <input type="text" placeholder="Search across your channel" />
+                    </div>
+                </header>
+            );
+        };
+
+        const DailyDataModal = ({ isOpen, onClose, onSubmit }) => {
+            const [ctrFile, setCtrFile] = useState(null);
+            const [impressionFile, setImpressionFile] = useState(null);
+
+            const handleCtrFileChange = (e) => {
+                setCtrFile(e.target.files[0]);
+            };
+
+            const handleImpressionFileChange = (e) => {
+                setImpressionFile(e.target.files[0]);
+            };
+
+            const handleSubmit = () => {
+                if (ctrFile && impressionFile) {
+                    onSubmit({ ctrFile, impressionFile });
+                    setCtrFile(null);
+                    setImpressionFile(null);
+                    onClose();
+                } else {
+                    alert('Please select both CTR and Impression files');
+                }
+            };
+
+            if (!isOpen) return null;
+
+            return (
+                <div className="modal-overlay" onClick={onClose}>
+                    <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <h2>Daily Data</h2>
+                            <button className="close-btn" onClick={onClose}>×</button>
+                        </div>
+                        
+                        <div className="modal-body">
+                            <div className="file-sections">
+                                <div className="file-section">
+                                    <h3>CTR File</h3>
+                                    <div className="file-upload-area">
+                                        <input 
+                                            type="file" 
+                                            id="ctr-file" 
+                                            onChange={handleCtrFileChange}
+                                            accept=".csv,.xlsx,.xls"
+                                            style={{ display: 'none' }}
+                                        />
+                                        <label htmlFor="ctr-file" className="file-upload-btn">
+                                            <div className="upload-icon">
+                                                <span className="plus-icon">+</span>
+                                            </div>
+                                            <span className="upload-text">Add New</span>
+                                        </label>
+                                        {ctrFile && (
+                                            <div className="file-selected">
+                                                <span className="file-name">{ctrFile.name}</span>
+                                                <button 
+                                                    className="remove-file-btn" 
+                                                    onClick={() => setCtrFile(null)}
+                                                >
+                                                    ×
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="file-section">
+                                    <h3>Impression File</h3>
+                                    <div className="file-upload-area">
+                                        <input 
+                                            type="file" 
+                                            id="impression-file" 
+                                            onChange={handleImpressionFileChange}
+                                            accept=".csv,.xlsx,.xls"
+                                            style={{ display: 'none' }}
+                                        />
+                                        <label htmlFor="impression-file" className="file-upload-btn">
+                                            <div className="upload-icon">
+                                                <span className="plus-icon">+</span>
+                                            </div>
+                                            <span className="upload-text">Add New</span>
+                                        </label>
+                                        {impressionFile && (
+                                            <div className="file-selected">
+                                                <span className="file-name">{impressionFile.name}</span>
+                                                <button 
+                                                    className="remove-file-btn" 
+                                                    onClick={() => setImpressionFile(null)}
+                                                >
+                                                    ×
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="modal-footer">
+                            <button className="cancel-btn" onClick={onClose}>Cancel</button>
+                            <button className="submit-btn" onClick={handleSubmit}>Submit</button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const ViewVideoModal = ({ isOpen, onClose, video }) => {
+            if (!isOpen || !video) return null;
+
+            return (
+                <div className="modal-overlay" onClick={onClose}>
+                    <div className="modal-content view-modal" onClick={(e) => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <h2>{video.title} - Performance Data</h2>
+                            <button className="close-btn" onClick={onClose}>×</button>
+                        </div>
+                        
+                        <div className="modal-body">
+                            <div className="performance-table-container">
+                                <table className="performance-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Date</th>
+                                            <th>Day</th>
+                                            <th>Daily CTR</th>
+                                            <th>Daily Impressions</th>
+                                            <th>Total CTR</th>
+                                            <th>Total Impressions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {video.performanceData.map((row, index) => (
+                                            <tr key={index}>
+                                                <td>{row.date}</td>
+                                                <td>{row.day}</td>
+                                                <td>{row.dailyCTR}%</td>
+                                                <td>{row.dailyImpressions.toLocaleString()}</td>
+                                                <td>{row.totalCTR}%</td>
+                                                <td>{row.totalImpressions.toLocaleString()}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div className="modal-footer">
+                            <button className="cancel-btn" onClick={onClose}>Close</button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const EditVideoModal = ({ isOpen, onClose, onSubmit, video }) => {
+            const [ctrFile, setCtrFile] = useState(null);
+            const [impressionFile, setImpressionFile] = useState(null);
+
+            const handleCtrFileChange = (e) => {
+                setCtrFile(e.target.files[0]);
+            };
+
+            const handleImpressionFileChange = (e) => {
+                setImpressionFile(e.target.files[0]);
+            };
+
+            const handleSubmit = () => {
+                const updates = {};
+                if (ctrFile) updates.ctrFile = ctrFile;
+                if (impressionFile) updates.impressionFile = impressionFile;
+                
+                if (Object.keys(updates).length > 0) {
+                    onSubmit(updates);
+                    setCtrFile(null);
+                    setImpressionFile(null);
+                    onClose();
+                } else {
+                    alert('Please select at least one file to update');
+                }
+            };
+
+            if (!isOpen || !video) return null;
+
+            return (
+                <div className="modal-overlay" onClick={onClose}>
+                    <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <h2>Edit Video Files</h2>
+                            <button className="close-btn" onClick={onClose}>×</button>
+                        </div>
+                        
+                        <div className="modal-body">
+                            <div className="current-files">
+                                <h3>Current Files:</h3>
+                                <div className="current-file-list">
+                                    <div className="current-file-item">
+                                        <span className="file-label">CTR File:</span>
+                                        <span className="file-name">{video.ctrFile || 'No file uploaded'}</span>
+                                    </div>
+                                    <div className="current-file-item">
+                                        <span className="file-label">Impression File:</span>
+                                        <span className="file-name">{video.impressionFile || 'No file uploaded'}</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="file-sections">
+                                <div className="file-section">
+                                    <h3>Replace CTR File</h3>
+                                    <div className="file-upload-area">
+                                        <input 
+                                            type="file" 
+                                            id="edit-ctr-file" 
+                                            onChange={handleCtrFileChange}
+                                            accept=".csv,.xlsx,.xls"
+                                            style={{ display: 'none' }}
+                                        />
+                                        <label htmlFor="edit-ctr-file" className="file-upload-btn">
+                                            <div className="upload-icon">
+                                                <span className="plus-icon">+</span>
+                                            </div>
+                                            <span className="upload-text">Replace File</span>
+                                        </label>
+                                        {ctrFile && (
+                                            <div className="file-selected">
+                                                <span className="file-name">{ctrFile.name}</span>
+                                                <button 
+                                                    className="remove-file-btn" 
+                                                    onClick={() => setCtrFile(null)}
+                                                >
+                                                    ×
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="file-section">
+                                    <h3>Replace Impression File</h3>
+                                    <div className="file-upload-area">
+                                        <input 
+                                            type="file" 
+                                            id="edit-impression-file" 
+                                            onChange={handleImpressionFileChange}
+                                            accept=".csv,.xlsx,.xls"
+                                            style={{ display: 'none' }}
+                                        />
+                                        <label htmlFor="edit-impression-file" className="file-upload-btn">
+                                            <div className="upload-icon">
+                                                <span className="plus-icon">+</span>
+                                            </div>
+                                            <span className="upload-text">Replace File</span>
+                                        </label>
+                                        {impressionFile && (
+                                            <div className="file-selected">
+                                                <span className="file-name">{impressionFile.name}</span>
+                                                <button 
+                                                    className="remove-file-btn" 
+                                                    onClick={() => setImpressionFile(null)}
+                                                >
+                                                    ×
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="modal-footer">
+                            <button className="cancel-btn" onClick={onClose}>Cancel</button>
+                            <button className="submit-btn" onClick={handleSubmit}>Update Files</button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const VideoDatabase = () => {
+            const [videos, setVideos] = useState([
+                { 
+                    id: 1, 
+                    title: 'Video 1', 
+                    ctrFile: 'ctr_data_1.csv', 
+                    impressionFile: 'impression_data_1.csv',
+                    performanceData: [
+                        { date: '2024-01-01', day: 1, dailyCTR: 6.0, dailyImpressions: 10000, totalCTR: 6.0, totalImpressions: 10000 },
+                        { date: '2024-01-02', day: 2, dailyCTR: 7.0, dailyImpressions: 20000, totalCTR: 6.7, totalImpressions: 30000 },
+                        { date: '2024-01-03', day: 3, dailyCTR: 6.0, dailyImpressions: 15000, totalCTR: 6.4, totalImpressions: 45000 }
+                    ]
+                },
+                { 
+                    id: 2, 
+                    title: 'Video 2', 
+                    ctrFile: 'ctr_data_2.csv', 
+                    impressionFile: 'impression_data_2.csv',
+                    performanceData: [
+                        { date: '2024-01-01', day: 1, dailyCTR: 5.5, dailyImpressions: 12000, totalCTR: 5.5, totalImpressions: 12000 },
+                        { date: '2024-01-02', day: 2, dailyCTR: 6.2, dailyImpressions: 18000, totalCTR: 5.9, totalImpressions: 30000 },
+                        { date: '2024-01-03', day: 3, dailyCTR: 5.8, dailyImpressions: 14000, totalCTR: 5.8, totalImpressions: 44000 }
+                    ]
+                }
+            ]);
+            const [isModalOpen, setIsModalOpen] = useState(false);
+            const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+            const [isViewModalOpen, setIsViewModalOpen] = useState(false);
+            const [editingVideo, setEditingVideo] = useState(null);
+            const [viewingVideo, setViewingVideo] = useState(null);
+
+            const handleAddVideo = () => {
+                setIsModalOpen(true);
+            };
+
+            const parseCSV = (csvText) => {
+                const lines = csvText.trim().split('\n');
+                const headers = lines[0].split(',').map(h => h.trim());
+                const data = [];
+                
+                for (let i = 1; i < lines.length; i++) {
+                    const values = lines[i].split(',').map(v => v.trim());
+                    const row = {};
+                    headers.forEach((header, index) => {
+                        row[header] = values[index];
+                    });
+                    data.push(row);
+                }
+                return data;
+            };
+
+            const processFileData = async (ctrFile, impressionFile) => {
+                try {
+                    // Parse CTR file with the specific format: "Date,Impressions click-through rate (%)"
+                    const ctrText = await ctrFile.text();
+                    const ctrData = parseCSV(ctrText);
+                    
+                    // Parse Impression file (assuming format: "Date,Impressions" or similar)
+                    const impressionText = await impressionFile.text();
+                    const impressionData = parseCSV(impressionText);
+                    
+                    console.log('CTR Data:', ctrData);
+                    console.log('Impression Data:', impressionData);
+                    
+                    // Combine the data by date - assume both files have the same dates in the same order
+                    const combinedData = [];
+                    const maxLength = Math.max(ctrData.length, impressionData.length);
+                    
+                    for (let i = 0; i < maxLength; i++) {
+                        const ctrRow = ctrData[i] || {};
+                        const impressionRow = impressionData[i] || {};
+                        
+                        // Extract date and CTR from CTR file
+                        const date = ctrRow['Date'] || impressionRow['Date'] || `Day ${i + 1}`;
+                        const dailyCTR = parseFloat(ctrRow['Impressions click-through rate (%)'] || 0);
+                        
+                        // Extract impressions from impression file with format: "Date,Impressions"
+                        const dailyImpressions = parseInt(impressionRow['Impressions'] || 0);
+                        
+                        // Only add rows that have valid data
+                        if (dailyCTR > 0 && dailyImpressions > 0) {
+                            combinedData.push({
+                                date: date,
+                                day: i + 1,
+                                dailyCTR: dailyCTR,
+                                dailyImpressions: dailyImpressions
+                            });
+                        }
+                    }
+
+                    if (combinedData.length === 0) {
+                        throw new Error('No valid data found in uploaded files');
+                    }
+
+                    // Calculate total impressions and cumulative CTR using the correct formula:
+                    // CTR_tot = (1 / Imp_tot) * Σ (CTR_n * Imp_n)
+                    let totalImpressions = 0;
+                    let sumCTRTimesImpressions = 0;
+                    
+                    const processedData = combinedData.map((row, index) => {
+                        totalImpressions += row.dailyImpressions;
+                        sumCTRTimesImpressions += (row.dailyCTR / 100) * row.dailyImpressions;
+                        
+                        // Apply the formula: CTR_tot = (1 / Imp_tot) * Σ (CTR_n * Imp_n)
+                        const totalCTR = totalImpressions > 0 ? (1 / totalImpressions) * sumCTRTimesImpressions * 100 : 0;
+                        
+                        return {
+                            ...row,
+                            totalCTR: parseFloat(totalCTR.toFixed(2)),
+                            totalImpressions: totalImpressions
+                        };
+                    });
+
+                    console.log('Processed Data:', processedData);
+                    return processedData;
+                } catch (error) {
+                    console.error('Error processing files:', error);
+                    alert(`Error processing files: ${error.message}. Please check your file format.`);
+                    return null;
+                }
+            };
+
+            const handleModalSubmit = async (data) => {
+                try {
+                    const performanceData = await processFileData(data.ctrFile, data.impressionFile);
+                    
+                    if (performanceData === null) {
+                        // File processing failed, don't create the video
+                        return;
+                    }
+                    
+                    const newVideo = {
+                        id: videos.length + 1,
+                        title: `Video ${videos.length + 1}`,
+                        ctrFile: data.ctrFile.name,
+                        impressionFile: data.impressionFile.name,
+                        performanceData: performanceData
+                    };
+                    setVideos([...videos, newVideo]);
+                } catch (error) {
+                    console.error('Error processing video data:', error);
+                    alert('Error processing files. Please try again.');
+                }
+            };
+
+            const handleEditVideo = (id) => {
+                const video = videos.find(v => v.id === id);
+                setEditingVideo(video);
+                setIsEditModalOpen(true);
+            };
+
+            const handleEditModalSubmit = (updates) => {
+                setVideos(videos.map(v => {
+                    if (v.id === editingVideo.id) {
+                        const updatedVideo = { ...v };
+                        if (updates.ctrFile) {
+                            updatedVideo.ctrFile = updates.ctrFile.name;
+                            // Reprocess data when files are updated
+                            updatedVideo.performanceData = processFileData(updates.ctrFile, updates.impressionFile || v.impressionFile);
+                        }
+                        if (updates.impressionFile) {
+                            updatedVideo.impressionFile = updates.impressionFile.name;
+                            // Reprocess data when files are updated
+                            updatedVideo.performanceData = processFileData(updates.ctrFile || v.ctrFile, updates.impressionFile);
+                        }
+                        return updatedVideo;
+                    }
+                    return v;
+                }));
+            };
+
+            const handleViewVideo = (id) => {
+                const video = videos.find(v => v.id === id);
+                setViewingVideo(video);
+                setIsViewModalOpen(true);
+            };
+
+            const handleDeleteVideo = (id) => {
+                if (window.confirm('Are you sure you want to delete this video?')) {
+                    setVideos(videos.filter(v => v.id !== id));
+                }
+            };
+
+            return (
+                <div className="video-database-page">
+                    {/* Add New Video Section */}
+                    <div className="add-new-video-section">
+                        <button className="add-new-video-btn" onClick={handleAddVideo}>
+                            <div className="add-new-video-icon">
+                                <span className="plus-icon">+</span>
+                            </div>
+                            <span className="add-new-video-text">Add New Video</span>
+                        </button>
+                    </div>
+
+                    {/* Video List */}
+                    <div className="video-list">
+                        {videos.map((video, index) => (
+                            <div key={video.id} className="video-entry">
+                                <span className="video-title">{video.title}</span>
+                                <div className="video-actions">
+                                    <button 
+                                        className="action-btn view-btn" 
+                                        onClick={() => handleViewVideo(video.id)}
+                                        title="View performance data"
+                                    >
+                                        📈
+                                    </button>
+                                    <button 
+                                        className="action-btn edit-btn" 
+                                        onClick={() => handleEditVideo(video.id)}
+                                        title="Edit video"
+                                    >
+                                        ⚙️
+                                    </button>
+                                    <button 
+                                        className="action-btn delete-btn" 
+                                        onClick={() => handleDeleteVideo(video.id)}
+                                        title="Delete video"
+                                    >
+                                        ✕
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* Daily Data Modal */}
+                    <DailyDataModal 
+                        isOpen={isModalOpen}
+                        onClose={() => setIsModalOpen(false)}
+                        onSubmit={handleModalSubmit}
+                    />
+
+                    {/* Edit Video Modal */}
+                    <EditVideoModal 
+                        isOpen={isEditModalOpen}
+                        onClose={() => {
+                            setIsEditModalOpen(false);
+                            setEditingVideo(null);
+                        }}
+                        onSubmit={handleEditModalSubmit}
+                        video={editingVideo}
+                    />
+
+                    {/* View Video Modal */}
+                    <ViewVideoModal 
+                        isOpen={isViewModalOpen}
+                        onClose={() => {
+                            setIsViewModalOpen(false);
+                            setViewingVideo(null);
+                        }}
+                        video={viewingVideo}
+                    />
+                </div>
+            );
+        };
+
+        const Dashboard = () => {
+            return (
+                <div className="dashboard">
+                    {/* Large Add Video Button */}
+                    <div className="add-video-section">
+                        <button className="add-video-btn">
+                            <div className="add-video-icon">
+                                <div className="plus-box">
+                                    <span className="plus-icon">+</span>
+                                </div>
+                            </div>
+                            <div className="add-video-text">
+                                <h3>Add Video</h3>
+                                <p>Upload a new video to your channel</p>
+                            </div>
+                        </button>
+                    </div>
+                </div>
+            );
+        };
+
+        const MainContent = ({ activeView }) => {
+            return (
+                <main className="main-content">
+                    {activeView === 'dashboard' && <Dashboard />}
+                    {activeView === 'baseline-tracker' && <div className="baseline-tracker-page">Baseline Tracker content coming soon...</div>}
+                    {activeView === 'video-database' && <VideoDatabase />}
+                </main>
+            );
+        };
+
+        const App = () => {
+            const [activeView, setActiveView] = useState('dashboard');
+            const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+            const toggleSidebar = () => {
+                setSidebarCollapsed(!sidebarCollapsed);
+            };
+
+            return (
+                <div className="app">
+                    <Header onToggleSidebar={toggleSidebar} />
+                    <div className="app-body">
+                        <Sidebar 
+                            isCollapsed={sidebarCollapsed} 
+                            activeItem={activeView}
+                            setActiveItem={setActiveView}
+                        />
+                        <MainContent activeView={activeView} />
+                    </div>
+                </div>
+            );
+        };
+
+        ReactDOM.render(<App />, document.getElementById('root'));
+        {% endraw %}
+    </script>
+</body>
+</html>
